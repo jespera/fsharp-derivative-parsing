@@ -18,5 +18,10 @@ module Script =
   let simpleMap : Map<string, int Rule> = Map.add "B" (Disj(Token 0, Token 1)) (Map.add "S" (Disj(Epsilon, Conj(NT "B", NT "S"))) Map.empty )
   let simpleGrm : int Grm = "S", simpleMap
 
-  let d1 = derive 1 simpleGrm
+  (*let d1 = derive 1 simpleGrm*)
 
+  let simpleNullables = compute_nullable simpleGrm
+
+  open System
+
+  Set.iter (fun e -> Console.WriteLine ("Elem : " + e)) simpleNullables
