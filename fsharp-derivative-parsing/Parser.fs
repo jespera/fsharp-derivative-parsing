@@ -1,9 +1,9 @@
 namespace DerivativeParser
 
 module Grammar =
-  type IToken = interface 
-    abstract Str : unit -> string
-  end
+//  type IToken = interface 
+//    abstract Str : unit -> string
+//  end
 
 
   (* compute fixed-point of function 'f' on set until no new
@@ -18,9 +18,15 @@ module Grammar =
       else loop (Set.union next cur) in
     loop cur
 
+  let fix f cur =
+    let rec loop cur =
+      let next = f cur in
+      if next = cur
+      then next
+      else loop next in
+    loop cur
 
-
-  type 'a Rule when 'a :> IToken = 
+  type 'a Rule (* when 'a :> IToken *) = 
   | Epsilon 
   | Empty 
   | Token of 'a 
@@ -28,7 +34,7 @@ module Grammar =
   | Conj of 'a Rule * 'a Rule 
   | Disj of 'a Rule * 'a Rule
   
-  type 'a LazyRule when 'a :> IToken =
+  type 'a LazyRule (* when 'a :> IToken *) =
     | Derive of Lazy<'a Rule>
     | Rule of 'a Rule
 
@@ -39,7 +45,7 @@ module Grammar =
 
   let make_derive fx = Derive(Lazy.Create fx)
 
-  type 'a Grm when 'a :> IToken = string * Map<string, 'a LazyRule> 
+  type 'a Grm (* when 'a :> IToken *) = string * Map<string, 'a LazyRule> 
       
 
   let get name grm = Map.find name (snd grm)
@@ -74,7 +80,7 @@ module Grammar =
       match rule with
       | Epsilon -> "e"
       | Empty -> "E"
-      | Token tok -> tok.Str()
+      | Token tok -> tok.ToString()
       | NT other -> other
       | Conj (l, r) -> loop l + " " + loop r
       | Disj (l, r) -> par(loop l) + "|" + par(loop r) in
@@ -128,13 +134,15 @@ module Grammar =
       | _ -> false in 
     loop rule
   
-  let get_next_name (token : IToken) name  =
-    "d" + token.Str() + name
+//  let get_next_name (token : IToken) name  =
+  let get_next_name token name  =
+    "d" + token.ToString() (* Str() *) + name
 
-  let get_prev_name (token : IToken) (next_name : string) = 
-    next_name.Substring(token.Str().Length + 1)
+//  let get_prev_name (token : IToken) (next_name : string) = 
+  let get_prev_name token (next_name : string) = 
+    next_name.Substring(token.ToString().Length + 1 (*Str()*))
 
-  let derive_with token grm nullables : 'a Grm when 'a :> IToken = 
+  let derive_with token grm nullables : 'a Grm (* when 'a :> IToken *) = 
     let start_name = fst grm in
     let rule = get start_name grm in
     let new_name = get_next_name token start_name in
@@ -164,6 +172,36 @@ module Grammar =
                                   acc_rules
                         ) rules' undefined)
 
-  let derive token grm : 'a Grm when 'a :> IToken =
+  let derive token grm : 'a Grm (* when 'a :> IToken *) =
     let nullables = compute_nullable grm in
     derive_with token grm nullables
+
+  (* Compute the FIRST-set for grm *)
+  let compute_first_with grm nullables =
+    let fold_first_maps map_left map_right = 
+      Map.fold 
+        (fun acc_map name first_set -> 
+          acc_map |> match Map.tryFind name acc_map with
+                     | None -> Map.add name first_set 
+                     | Some first_set_acc -> Map.add name (Set.union first_set_acc first_set))
+        map_right map_left in
+    let rec step first_map_acc name rule = 
+      match rule with
+      | Epsilon | Empty -> Map.add name Set.empty first_map_acc
+      | NT other -> 
+          match Map.tryFind other first_map_acc with
+          | Some first_set -> Map.add name first_set first_map_acc
+          | None -> Map.add name Set.empty first_map_acc
+      | Token tok -> Map.add name (Set.ofList [tok]) first_map_acc 
+      | Disj (l, r) -> let map_left = step first_map_acc name l in
+                       let map_right = step first_map_acc name r in
+                       fold_first_maps map_left map_right
+      | Conj (l, r) -> let map_left = step first_map_acc name l in
+                       if not(is_nullable_rule l nullables)
+                       then map_left
+                       else fold_first_maps map_left (step first_map_acc name r) in
+    let first_step first_map = 
+      Map.fold (fun acc name d_rule -> step acc name !!d_rule) 
+               first_map (snd grm) in
+    fix first_step Map.empty 
+    
